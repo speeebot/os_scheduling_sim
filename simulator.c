@@ -4,6 +4,12 @@
 #include <stdint.h>
 #include <errno.h>
 #include <string.h>
+#include <stdbool.h>
+#include <limits.h>
+
+#define EMPTY_QUEUE INT_MIN
+
+int num_procs = 0;
 
 typedef struct Process{
   int pid;
@@ -12,10 +18,55 @@ typedef struct Process{
   int burst_time;
   int remaining_time;
   int completion_time;
-  int is_running;
+  bool is_running;
 } Process;
 
-int num_procs = 0;
+typedef struct node {
+  Process proc;
+  struct node *next;
+} node;
+
+typedef struct {
+  node *head;
+  node *tail;
+} queue;
+
+node* new_node(Process p) {
+  node* temp = malloc(sizeof(node));
+  temp->proc = p;
+  temp->next = NULL;
+  return temp;
+}
+
+queue* init_queue() {
+  queue* q = malloc(sizeof(queue));
+  q->head = q->tail = NULL;
+  return q;
+}
+
+void enqueue(queue *q, Process p) {
+  //create new node
+  node *temp = new_node(p);
+  if(q->tail == NULL) {
+    q->head = q->tail = temp;
+    return;
+  }
+  q->tail->next = temp;
+  q->tail = temp;
+}
+
+void dequeue(queue *q) {
+  if(q->head == NULL)
+    return;
+  
+  node* temp = q->head;
+  q->head = q->head->next;
+
+  if(q->head == NULL)
+    q->tail = NULL;
+  
+  free(temp);
+}
 
 void sort_arrival_times(Process **procs) {
   int j, i, min;
@@ -74,7 +125,7 @@ int main(int argc, char** argv)
     exit(1);
   }
 
-  int i = 0;
+  int i, j;
   int time_quantum = atoi(argv[1]);
   int context_switch_time = atoi(argv[2]);
   char* filename = argv[3];
@@ -91,46 +142,69 @@ int main(int argc, char** argv)
   sort_arrival_times(&procs);
 
   //calculate completion times
-  for(i = 0; i < num_procs; i++) {
+  /*for(i = 0; i < num_procs; i++) {
     procs[i].completion_time = procs[i].burst_time - procs[i].arrival_time; //TODO: doesnt work (LOOK AT GANTT CHART)
-  }
+  }*/
 
-  printf("-----------------------SORTED BY ARRIVAL TIME---------------------------------\n");
- 
+  printf("----------------------------------------SORTED BY ARRIVAL TIME-----------------------------------------\n");
   for(i = 0; i < num_procs; i++) {
     printf("process_id: %d, event_type: %d, arrival_time: %d, burst_time: %d, remaining_time: %d, completion_time: %d\n", 
           procs[i].pid, procs[i].event_type, 
           procs[i].arrival_time, procs[i].burst_time, procs[i].remaining_time, procs[i].completion_time);
   }
-
+  printf("--------------------------------------------------------------------------------------------------------\n");
+  //place in queue by arrival time
+  queue *wait_queue = init_queue();
+  for(i = 0; i < num_procs; i++) {
+    enqueue(wait_queue, procs[i]);
+    printf("P%d \n", wait_queue->tail->proc.pid);
+  }
 
   for(i = 0; i < num_procs; i++) {
-    procs[i].is_running = 0;
+    printf("P%d \n", wait_queue->head->proc.pid);
+    dequeue(wait_queue);
+  }
+/*
+  for(i = 0; i < num_procs; i++) {
+    procs[i].is_running = false;
   }
 
   int cur_time = 0;
   int procs_remaining = num_procs;
+  Process p = wait_queue->head->proc; //first process in queue
 
   //FCFS algorithm REMEMBER time quantum and context switch time
-  while(1) { 
-    //process arrives/finishes at this time frame
-    for(i = 0; i < num_procs; i++) {    
-      if(cur_time == procs[i].arrival_time) 
-        printf("Time %d P%d arrives\n", cur_time, procs[i].pid);
-      if(procs[i].remaining_time == 0)
-        printf("Time %d P%d finishes\n", cur_time, procs[i].pid);
-
-      //process runs (a process is always running unless there is a context switch)
-      while(procs[i].remaining_time != 0 && cur_time % time_quantum != 0) {
-        procs[i].remaining_time--;
-        cur_time++;
-      }
+  for(;;) { 
+    //check for arrivals every time_frame
+    if(cur_time == p.arrival_time) {
+      printf("Time %d P%d arrives\n", cur_time, p.pid);
+      //procs[i].is_running = true; //just because process arrives, doesnt mean it starts running (WE NEED A QUEUE???????)
     }
-    procs_remaining--;
-    if(procs_remaining == 0) 
+
+    //if process has arrived and is next in queue
+    if(p.arrival_time <= cur_time) {
+      p.is_running = true;
+    }
+  
+
+    //process running every time frame
+    if(p.is_running) {
+      p.remaining_time--;
+    }
+    
+    //check for process remaining_time == 0 (finished)
+    if(p.remaining_time == 0) {
+      printf("dequeueing\n");
+      dequeue(wait_queue);
+      p = wait_queue->head->proc;
+    }
+    printf("next: %d", p.pid);
+
+    cur_time++;
+    if(cur_time == 112)
       break;
   }
-
+*/
   free(procs); 
   exit(0); 
 }

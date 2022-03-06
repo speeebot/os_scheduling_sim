@@ -1,1 +1,3 @@
 build/
+.gdb_history
+peda-session-simulator.txt
