@@ -25,7 +25,10 @@ typedef struct process{
   int end_time;
 
   int status;
+<<<<<<< HEAD
   int arrived;
+=======
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
 } process_t;
 
 typedef struct node {
@@ -43,6 +46,7 @@ int fin_procs = 0;
 
 int time_quantum = 0;
 int context_switch_time = 0;
+<<<<<<< HEAD
 int context_switch_count = 0;
 
 int cur_time = 0;
@@ -51,6 +55,13 @@ int cpu_busy = 0;
 
 int arrived_result;
 
+=======
+
+int cur_time = 0;
+int cpu_idle = 0;
+int cpu_busy = 0;
+
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
 void sort_arrival_times(process_t *(**procs)) {
   int j, i, min;
   process_t *temp;
@@ -111,6 +122,7 @@ process_t *dequeue(node_t **head) {
 }
 
 int check_arrived(node_t **head) {
+<<<<<<< HEAD
   int ret = 0;
 
   if(*head == NULL) {
@@ -126,10 +138,19 @@ int check_arrived(node_t **head) {
   }
   arrived_result = ret;
   return ret;
+=======
+  node_t *cur_node = *head;
+  if(!cur_node)
+    return 0;
+
+  if(cur_node->proc->arrival_time < cur_time)
+    return 1;
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
 }
 
 void print_next_frame() {
   if(running) {
+<<<<<<< HEAD
     int i;
     for(i = 0; i < num_procs; i++) {
       if(procs[i]->arrival_time == cur_time) { //arrival event
@@ -154,6 +175,11 @@ void summary() {
   printf("cpu busy time: %d\n", cpu_busy);
   printf("cpu idle time: %d\n", cpu_idle);
   printf("context switch count %d\n", context_switch_count);
+=======
+    printf("Time %d P%d runs\n", cur_time, running->pid);
+  }
+
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
 }
 
 void get_processes(char* filename) {
@@ -220,6 +246,7 @@ void get_processes(char* filename) {
 
 process_t *serve_next_process() {
   process_t *p = NULL;
+<<<<<<< HEAD
   if((p = dequeue(&proc_queue))) {
     p->status = RUNNING;
     if(!p->start_time) {
@@ -263,10 +290,52 @@ void sim() {
         if(check_arrived(&proc_queue)) {
           running = serve_next_process();
         }
+=======
+  int arrived = check_arrived(&proc_queue);
+
+  if(arrived) {
+    if((p = dequeue(&proc_queue))) {
+      if(cur_time >= p->arrival_time) {
+        printf("SERVED NEXT PROCESS: P%d\n", p->pid);
+        p->status = RUNNING;
+        if(!p->start_time) {
+          p->start_time = cur_time;
+        }
+
+        if(p->burst_remaining <= 0) {
+          p->burst_remaining = p->burst_time;
+        }
+
+        p->quantum_remaining = time_quantum;
+      }
+      
+    }
+    return p; //set to running
+  }
+}
+
+void sim() {
+
+  for(;;) {
+
+    if(running) {
+      //printf("Time %d P%d runs\n", cur_time, running->pid);
+      running->burst_remaining--;
+      running->quantum_remaining--;
+
+      //CPU burst done, serve new process
+      if(running->burst_remaining == 0) {
+        printf("P%d finishes at time %d\n", running->pid, cur_time);
+        running->status = FIN;
+        running->end_time = cur_time;
+        fin_procs++;
+        running = serve_next_process();
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
       }
       //quantum expired, put at back of queue, serve new process
       else if(running->quantum_remaining == 0) {
         printf("QUANTUM EXPIRED\n");
+<<<<<<< HEAD
         running->status = QUEUED;
         enqueue(&proc_queue, running);
         if(check_arrived(&proc_queue)) {
@@ -297,19 +366,51 @@ void sim() {
               cur_time+context_switch_time*context_switch_count, procs[i]->pid);
       }
 
+=======
+        enqueue(&proc_queue, running);
+        running = serve_next_process();
+      }
+      cpu_busy++;
+    }
+    //idle time, try serving process in queue
+    else {
+      if(!(running = serve_next_process())) {
+        //printf("SERVING idle\n");
+        cpu_idle++;
+      }
+    }
+
+    //processes not running
+    int i;
+    for(i = 0; i < num_procs; i++) {
+      process_t *p =  procs[i];
+
+      if(p->arrival_time == cur_time) {
+        printf("Time %d P%d arrives\n", cur_time, procs[i]->pid);
+      }
+
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
       if(p->status == QUEUED){
         p->wait_time++;
       }
     }
 
     if(fin_procs < num_procs) {
+<<<<<<< HEAD
+=======
+      //printf("finished_processes: %d\n", fin_procs);
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
       print_next_frame();
     }
     else break;
 
     cur_time++;
   }
+<<<<<<< HEAD
   summary();
+=======
+
+>>>>>>> f065c83d7adade778a0a50be9c28011106504ee9
   free_procs();
 }
 
