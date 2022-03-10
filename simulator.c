@@ -154,20 +154,18 @@ void summary() {
   printf("AT:arrival  BT:burst  ST:start  ET:end  TT:turnaround  WT:wait\n\n");
   int i;
   for (i = 0; i < num_procs; i++) {
-    summed_turnaround_time += (double)(procs[i]->end_time 
-                              - procs[i]->arrival_time);
+    summed_turnaround_time += (double)(procs[i]->end_time - procs[i]->arrival_time);
                                 
-    summed_wait_time += (double)(procs[i]->wait_time + (procs[i]->event_count * context_switch_time));
+    summed_wait_time += (double)(procs[i]->wait_time);
             
-    printf("P%d: BT=%d AT=%d ST=%d ET=%d TT=%d WT=%d EVENT_COUNT: %d\n", 
+    printf("P%d: BT=%d AT=%d ST=%d ET=%d TT=%d WT=%d\n", 
           procs[i]->pid, 
           procs[i]->burst_time,
           procs[i]->arrival_time, 
           procs[i]->start_time, 
           procs[i]->end_time, 
           (procs[i]->end_time - procs[i]->arrival_time), 
-          procs[i]->wait_time + (procs[i]->event_count * context_switch_time),
-          procs[i]->event_count);
+          procs[i]->wait_time);
   }
 
   printf("\nAverage turnaround time: %.2f\n", summed_turnaround_time / (double)num_procs);
@@ -456,11 +454,6 @@ int main(int argc, char** argv)
 
   get_processes(filename); 
   printf("Number of processes: %d\n", num_procs);
-  printf("\n-------------SORTED ARRIVAL TIMES-------------\n\n");
-  int i;
-  for(i = 0; i < num_procs; i++)
-    printf("pid: %d, arrival_time: %d, burst_time: %d\n", 
-            procs[i]->pid, procs[i]->arrival_time, procs[i]->burst_time);
   printf("\n---------------SCHEDULER OUTPUT----------------\n\n");
 
   sim();
