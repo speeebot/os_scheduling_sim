@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <math.h>
 
 enum status {
   QUEUED, RUNNING, IO, FINISHED
@@ -23,6 +24,7 @@ typedef struct process{
 
   int burst_remaining;
   int quantum_remaining;
+  int context_switch_remaining;
 
   int start_time;
   int wait_time;
@@ -30,6 +32,9 @@ typedef struct process{
 
   int status;
   int arrived;
+
+  int event_count;
+
 } process_t;
 
 typedef struct node {
@@ -152,16 +157,17 @@ void summary() {
     summed_turnaround_time += (double)(procs[i]->end_time 
                               - procs[i]->arrival_time);
                                 
-    summed_wait_time += (double)(procs[i]->wait_time);
+    summed_wait_time += (double)(procs[i]->wait_time + (procs[i]->event_count * context_switch_time));
             
-    printf("P%d: BT=%d AT=%d ST=%d ET=%d TT=%d WT=%d\n", 
+    printf("P%d: BT=%d AT=%d ST=%d ET=%d TT=%d WT=%d EVENT_COUNT: %d\n", 
           procs[i]->pid, 
           procs[i]->burst_time,
           procs[i]->arrival_time, 
           procs[i]->start_time, 
           procs[i]->end_time, 
           (procs[i]->end_time - procs[i]->arrival_time), 
-          procs[i]->wait_time);
+          procs[i]->wait_time + (procs[i]->event_count * context_switch_time),
+          procs[i]->event_count);
   }
 
   printf("\nAverage turnaround time: %.2f\n", summed_turnaround_time / (double)num_procs);
@@ -229,13 +235,13 @@ process_t *serve_next_process() {
       p->burst_remaining = p->burst_time;
     }
     p->quantum_remaining = time_quantum;
+    p->context_switch_remaining = context_switch_time;
   }
 
   return p; //set to running
 }
 
 void report_event(int event, process_t **p) {
-  int display_time = cur_time + (context_switch_time*context_switch_count);
   context_switch_count++;
   num_reports++;
 
@@ -255,7 +261,7 @@ void report_event(int event, process_t **p) {
   }
 
   if(event == ARRIVES) {
-    size_t buff_size = snprintf(NULL, 0, "Time %d P%d arrives", cur_time + context_switch_time, (*p)->pid) + 1;
+    size_t buff_size = snprintf(NULL, 0, "Time %d P%d arrives", cur_time, (*p)->pid) + 1;
 
     report->msg = malloc(buff_size);
     if(report->msg == NULL) {
@@ -268,30 +274,31 @@ void report_event(int event, process_t **p) {
   }
   
   if(event == RUNS) {
-    size_t buff_size = snprintf(NULL, 0, "Time %d P%d runs", display_time, (*p)->pid) + 1;
+    size_t buff_size = snprintf(NULL, 0, "Time %d P%d runs", cur_time, (*p)->pid) + 1;
 
     report->msg = malloc(buff_size);
     if(report->msg == NULL) {
       printf("malloc() error.\n");
       exit(1);
     }
-    sprintf(report->msg, "Time %d P%d runs", display_time, (*p)->pid);
-    report->t = display_time;
+    sprintf(report->msg, "Time %d P%d runs", cur_time, (*p)->pid);
+    report->t = cur_time;
     reports[num_reports-1] = report;
   }
 
   if(event == FINISHES) {
-    size_t buff_size = snprintf(NULL, 0, "Time %d P%d finishes", display_time, (*p)->pid) + 1;
+    size_t buff_size = snprintf(NULL, 0, "Time %d P%d finishes", cur_time, (*p)->pid) + 1;
 
     report->msg = malloc(buff_size);
     if(report->msg == NULL) {
       printf("malloc() error.\n");
       exit(1);
     }
-    sprintf(report->msg, "Time %d P%d finishes", display_time, (*p)->pid);
-    report->t = display_time;
+    sprintf(report->msg, "Time %d P%d finishes", cur_time, (*p)->pid);
+    report->t = cur_time;
     reports[num_reports-1] = report;
   }
+
 }
 
 int compare_report_times(const void *a, const void *b) {
@@ -302,7 +309,7 @@ int compare_report_times(const void *a, const void *b) {
 }
 
 void print_report() {
-  qsort(reports, num_procs, sizeof(report_t*), &compare_report_times);
+  //qsort(reports, num_procs, sizeof(report_t*), &compare_report_times);
 
   int i;
   for(i = 0; i < num_reports; i++) {
@@ -325,16 +332,16 @@ void sim() {
     for(i = 0; i < num_procs; i++) {
       process_t *p =  procs[i];
 
-      //process arrives, but doesn't run
-      if(p->arrival_time == cur_time) {
-        enqueue(&proc_queue, procs[i]);
+      //process arrives
+      if(!p->arrived && p->arrival_time == cur_time) {
         p->arrived = true;
         p->status = QUEUED;
-
-        report_event(ARRIVES, &p);
+        enqueue(&proc_queue, p);
+        proc_queue->proc->context_switch_remaining = context_switch_time;
         if(running != NULL) {
-          report_event(RUNS, &running);
+          running->context_switch_remaining = context_switch_time;
         }
+        report_event(ARRIVES, &p);
       }
     }
 
@@ -342,43 +349,75 @@ void sim() {
       running->burst_remaining--;
       running->quantum_remaining--;
 /*--------------------------------CPU burst done, serve new process------------------------------*/
-      if(running->burst_remaining <= 0) {
-        report_event(FINISHES, &running);
-        running->status = FINISHED;
-        running->end_time = cur_time + (context_switch_count*context_switch_time);
-        finished_procs++;
-        
-  /*set finished process, grab next process in queue*/
+      if(running->burst_remaining <= 0 && running->quantum_remaining >= 0) {
+  /*set finished process*/
+        if(running->status != FINISHED) {
+          running->status = FINISHED;
+          running->end_time = cur_time;
+          finished_procs++;
+          report_event(FINISHES, &running);
+        }
+  /*grab next process in queue if context switch time is done*/
+        if(running->context_switch_remaining <= 0) {
           running = serve_next_process();
           if(running != NULL) {
             report_event(RUNS, &running);
           }
+        }
+        /*otherwise cur_time++ until context switch time is done*/
+        else {
+          running->context_switch_remaining--;
+          cur_time++;
+          continue;
+        };
       }
 /*------------------quantum expired, put at back of queue, serve new process--------------------*/
       else if(running->quantum_remaining <= 0) {
-        enqueue(&proc_queue, running); //place at back of queue
-        running->status = QUEUED;
-
-  /*set queued process, now grab next process in queue if its arrived*/
-        running = serve_next_process();
-        if(running != NULL) {
-          report_event(RUNS, &running);
+  /*set queued process*/
+        if(running->status != QUEUED) {
+          enqueue(&proc_queue, running); //place at back of queue
+          running->status = QUEUED;
+        }
+  /*grab next process in queue if context switch time is done*/
+        if(running->context_switch_remaining <= 0) {
+          running = serve_next_process();
+          if(running != NULL) {
+            report_event(RUNS, &running);
+          }
+        }
+        //otherwise cur_time++ until context switch time is done
+        else { 
+          running->context_switch_remaining--;
+          cur_time++;
+          continue;
         }
       }
       cpu_busy++;
     }
 /*------------idle time (no processes running), try serving process in queue-------------------*/
     else {
+  /*no processes have arrived yet*/
       if(!has_arrived(&proc_queue)) {
         cpu_idle++;
       }
-      running = serve_next_process();
-      if(running != NULL) {
-        report_event(RUNS, &running);
+  /*process is in queue, but not running yet*/
+      else {
+  /*grab process in queue if context switch time is done*/
+        if(proc_queue->proc->context_switch_remaining <= 0) {
+          running = serve_next_process();
+          if(running != NULL) {
+            report_event(RUNS, &running);
+          }
+        }
+        /*otherwise cur_time++ until context switch time is done*/
+        else {
+          proc_queue->proc->context_switch_remaining--;
+          cur_time++;
+          continue;
+        }
       }
     }
-
-    //if process has arrived and is queued
+  /*track wait times for queued processes*/
     for(i = 0; i < num_procs; i++) {
       process_t *p =  procs[i];
       if(p->status == QUEUED && p->arrived){ 
@@ -386,11 +425,13 @@ void sim() {
       }
     }
 
+  /*any processes left?*/
     if(finished_procs == num_procs) {
       break;
     }
-    else
+    else {
       cur_time++; //increment time frame by one
+    }
   }
 
   print_report();
@@ -415,12 +456,12 @@ int main(int argc, char** argv)
 
   get_processes(filename); 
   printf("Number of processes: %d\n", num_procs);
-  printf("\n-------------SORTED ARRIVAL TIMES-------------\n");
+  printf("\n-------------SORTED ARRIVAL TIMES-------------\n\n");
   int i;
   for(i = 0; i < num_procs; i++)
     printf("pid: %d, arrival_time: %d, burst_time: %d\n", 
             procs[i]->pid, procs[i]->arrival_time, procs[i]->burst_time);
-  printf("---------------SCHEDULER OUTPUT----------------\n\n");
+  printf("\n---------------SCHEDULER OUTPUT----------------\n\n");
 
   sim();
 
