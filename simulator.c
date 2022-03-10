@@ -32,9 +32,6 @@ typedef struct process{
 
   int status;
   int arrived;
-
-  int event_count;
-
 } process_t;
 
 typedef struct node {
@@ -307,8 +304,6 @@ int compare_report_times(const void *a, const void *b) {
 }
 
 void print_report() {
-  //qsort(reports, num_procs, sizeof(report_t*), &compare_report_times);
-
   int i;
   for(i = 0; i < num_reports; i++) {
     printf("%s\n", reports[i]->msg);
@@ -316,7 +311,6 @@ void print_report() {
 }
 
 void sim() {
-
   //allocate memory for first report
   reports = malloc(sizeof(report_t));
   if(reports == NULL) {
@@ -415,6 +409,7 @@ void sim() {
         }
       }
     }
+
   /*track wait times for queued processes*/
     for(i = 0; i < num_procs; i++) {
       process_t *p =  procs[i];
