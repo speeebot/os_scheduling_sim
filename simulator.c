@@ -2,11 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <errno.h>
 #include <string.h>
 #include <stdbool.h>
-#include <limits.h>
-#include <math.h>
 
 enum status {
   QUEUED, RUNNING, IO, FINISHED
@@ -167,9 +164,9 @@ void summary() {
 
   printf("\nAverage turnaround time: %.2f\n", summed_turnaround_time / (double)num_procs);
   printf("Average wait time: %.2f\n",  summed_wait_time / (double)num_procs);
-  printf("CPU busy time: %d\n", cpu_busy + (context_switch_count*context_switch_time));
+  printf("CPU busy time: %d\n", cpu_busy);
   printf("CPU idle time: %d\n", cpu_idle);
-  printf("Context switch count %d\n", context_switch_count);
+  printf("Context switch count: %d\n", context_switch_count);
 }
 
 void get_processes(char* filename) {
@@ -318,6 +315,8 @@ void sim() {
     exit(1);
   }
 
+  process_t *temp = malloc(sizeof(process_t));
+
   for(;;) {
 /*--------------------------------processes not running-------------------------------------*/
     int i;
@@ -328,20 +327,40 @@ void sim() {
       if(!p->arrived && p->arrival_time == cur_time) {
         p->arrived = true;
         p->status = QUEUED;
+        p->context_switch_remaining = context_switch_time;
         enqueue(&proc_queue, p);
-        proc_queue->proc->context_switch_remaining = context_switch_time;
         if(running != NULL) {
           running->context_switch_remaining = context_switch_time;
+          running->quantum_remaining = time_quantum;
         }
         report_event(ARRIVES, &p);
+        proc_queue->proc->context_switch_remaining = context_switch_time;
+        temp = p;
       }
     }
 
     if(running) {
-      running->burst_remaining--;
-      running->quantum_remaining--;
+  /*if cur_time is still in the context switch to running process*/
+      if(cur_time <= temp->arrival_time+context_switch_time) {
+        if(running->context_switch_remaining <= 0) {
+          running->context_switch_remaining = context_switch_time;
+          report_event(RUNS, &running);
+        }
+  /*cur_time++ until context switch time is done*/
+        else {
+          running->context_switch_remaining--;
+          cur_time++;
+          cpu_busy++;
+          continue;
+        }
+      }
+
+      if(running->quantum_remaining > 0)
+        running->burst_remaining--;
+      if(running->burst_remaining > 0)
+        running->quantum_remaining--;
 /*--------------------------------CPU burst done, serve new process------------------------------*/
-      if(running->burst_remaining <= 0 && running->quantum_remaining >= 0) {
+      if(running->burst_remaining <= 0) {
   /*set finished process*/
         if(running->status != FINISHED) {
           running->status = FINISHED;
@@ -356,12 +375,13 @@ void sim() {
             report_event(RUNS, &running);
           }
         }
-        /*otherwise cur_time++ until context switch time is done*/
+  /*otherwise cur_time++ until context switch time is done*/
         else {
           running->context_switch_remaining--;
           cur_time++;
+          cpu_busy++;
           continue;
-        };
+        }
       }
 /*------------------quantum expired, put at back of queue, serve new process--------------------*/
       else if(running->quantum_remaining <= 0) {
@@ -377,10 +397,11 @@ void sim() {
             report_event(RUNS, &running);
           }
         }
-        //otherwise cur_time++ until context switch time is done
+  /*otherwise cur_time++ until context switch time is done*/
         else { 
           running->context_switch_remaining--;
           cur_time++;
+          cpu_busy++;
           continue;
         }
       }
@@ -404,6 +425,7 @@ void sim() {
         /*otherwise cur_time++ until context switch time is done*/
         else {
           proc_queue->proc->context_switch_remaining--;
+          cpu_busy++;
           cur_time++;
           continue;
         }
